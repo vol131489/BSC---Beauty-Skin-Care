@@ -1,6 +1,9 @@
 let currentUser = null;
 let selectedDate = null;
 let serviciosDisponibles = [];
+let bookingView = null;      // 'login' | 'form' | 'done' (para re-dibujar al cambiar idioma)
+let refreshCalendar = null;
+let resenasCache = null;
 
 const BACKEND_URL = 'https://bsc-beauty-skin-care-production.up.railway.app';
 
@@ -72,14 +75,14 @@ function updateAuthUI() {
             document.getElementById('userMenuBtn').addEventListener('click', toggleUserPanel);
         } else {
             navAuth.innerHTML = `
-                <button class="auth-btn auth-btn-login" onclick="openLoginModal()">Iniciar Sesión</button>
-                <button class="auth-btn auth-btn-register" onclick="openLoginModal()">Registrarse</button>
+                <button class="auth-btn auth-btn-login" onclick="openLoginModal()">${t('Iniciar Sesión')}</button>
+                <button class="auth-btn auth-btn-register" onclick="openLoginModal()">${t('Registrarse')}</button>
             `;
         }
     }
     const userName = document.getElementById('userName');
     const userEmail = document.getElementById('userEmail');
-    if (userName) userName.textContent = currentUser ? `${currentUser.nombre} ${currentUser.apellido || ''}` : 'Usuario';
+    if (userName) userName.textContent = currentUser ? `${currentUser.nombre} ${currentUser.apellido || ''}` : t('Usuario');
     if (userEmail) userEmail.textContent = currentUser ? currentUser.email : 'email@example.com';
 }
 
@@ -139,13 +142,13 @@ async function handleLogin(e) {
             currentUser = data.user;
             closeLoginModal();
             updateAuthUI();
-            showNotification('¡Bienvenido de nuevo, ' + currentUser.nombre + '!', 'success');
+            showNotification(t('¡Bienvenido de nuevo, {0}!', currentUser.nombre), 'success');
         } else {
-            errorDiv.textContent = data.error || 'Error al iniciar sesión';
+            errorDiv.textContent = t(data.error || 'Error al iniciar sesión');
             errorDiv.classList.add('show');
         }
     } catch (error) {
-        errorDiv.textContent = 'Error de conexión. Por favor, inténtalo de nuevo.';
+        errorDiv.textContent = t('Error de conexión. Por favor, inténtalo de nuevo.');
         errorDiv.classList.add('show');
     }
 }
@@ -160,8 +163,8 @@ async function handleRegister(e) {
     const confirmPassword = document.getElementById('regConfirmPassword').value;
     const errorDiv = document.getElementById('registerError');
     clearErrors();
-    if (password !== confirmPassword) { errorDiv.textContent = 'Las contraseñas no coinciden'; errorDiv.classList.add('show'); return; }
-    if (password.length < 6) { errorDiv.textContent = 'La contraseña debe tener al menos 6 caracteres'; errorDiv.classList.add('show'); return; }
+    if (password !== confirmPassword) { errorDiv.textContent = t('Las contraseñas no coinciden'); errorDiv.classList.add('show'); return; }
+    if (password.length < 6) { errorDiv.textContent = t('La contraseña debe tener al menos 6 caracteres'); errorDiv.classList.add('show'); return; }
     try {
         const response = await fetch(`${BACKEND_URL}/api/auth/register`, {
             method: 'POST',
@@ -174,13 +177,13 @@ async function handleRegister(e) {
             currentUser = data.user;
             closeLoginModal();
             updateAuthUI();
-            showNotification('¡Cuenta creada exitosamente! Bienvenido a BSC.', 'success');
+            showNotification(t('¡Cuenta creada exitosamente! Bienvenido a BSC.'), 'success');
         } else {
-            errorDiv.textContent = data.error || 'Error al registrar usuario';
+            errorDiv.textContent = t(data.error || 'Error al registrar usuario');
             errorDiv.classList.add('show');
         }
     } catch (error) {
-        errorDiv.textContent = 'Error de conexión. Por favor, inténtalo de nuevo.';
+        errorDiv.textContent = t('Error de conexión. Por favor, inténtalo de nuevo.');
         errorDiv.classList.add('show');
     }
 }
@@ -192,7 +195,7 @@ async function handleLogout(e) {
     currentUser = null;
     closeUserPanel();
     updateAuthUI();
-    showNotification('Sesión cerrada correctamente', 'info');
+    showNotification(t('Sesión cerrada correctamente'), 'info');
 }
 
 // ── AGENDAR CITA ──────────────────────────────────────────
@@ -217,34 +220,36 @@ async function agendarCita(e) {
         });
         const data = await response.json();
         if (response.ok) {
-            showNotification('¡Cita agendada exitosamente! Te esperamos.', 'success');
+            showNotification(t('¡Cita agendada exitosamente! Te esperamos.'), 'success');
+            bookingView = 'done';
             document.getElementById('selectedDate').innerHTML = `
                 <div style="text-align:center; padding: 20px;">
                     <div style="font-size: 48px;">✅</div>
-                    <h4 style="color: #10b981; margin: 10px 0;">¡Cita Confirmada!</h4>
-                    <p>Tu cita fue agendada para el <strong>${fecha_cita.replace('T', ' a las ')}</strong></p>
-                    <button onclick="location.reload()" class="btn btn-primary" style="margin-top:15px;">Agendar otra cita</button>
+                    <h4 style="color: #10b981; margin: 10px 0;">${t('¡Cita Confirmada!')}</h4>
+                    <p>${t('Tu cita fue agendada para el')} <strong>${fecha_cita.replace('T', ' ' + t('a las') + ' ')}</strong></p>
+                    <button onclick="location.reload()" class="btn btn-primary" style="margin-top:15px;">${t('Agendar otra cita')}</button>
                 </div>
             `;
         } else {
-            errorDiv.textContent = data.error || 'Error al agendar la cita';
+            errorDiv.textContent = t(data.error || 'Error al agendar la cita');
             errorDiv.style.display = 'block';
         }
     } catch (error) {
-        errorDiv.textContent = 'Error de conexión. Intenta de nuevo.';
+        errorDiv.textContent = t('Error de conexión. Intenta de nuevo.');
         errorDiv.style.display = 'block';
     }
 }
 
 function mostrarFormularioCita(date) {
+    bookingView = 'form';
     const dateDisplay = document.getElementById('selectedDate');
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-    const fechaFormateada = date.toLocaleDateString('es-ES', options);
+    const fechaFormateada = date.toLocaleDateString(getLocale(), options);
 
     // Agrupar servicios por categoría
     const categorias = {};
     serviciosDisponibles.forEach(s => {
-        const cat = s.categoria || 'General';
+        const cat = s.categoria || t('General');
         if (!categorias[cat]) categorias[cat] = [];
         categorias[cat].push(s);
     });
@@ -273,27 +278,27 @@ function mostrarFormularioCita(date) {
     const opcionesHora = horas.map(h => `<option value="${h}">${h}</option>`).join('');
 
     dateDisplay.innerHTML = `
-        <p style="margin-bottom:12px;"><strong>Fecha:</strong> ${fechaFormateada}</p>
+        <p style="margin-bottom:12px;"><strong>${t('Fecha:')}</strong> ${fechaFormateada}</p>
         <form id="formCita">
             <div style="margin-bottom:15px;">
-                <label style="display:block; margin-bottom:10px; font-weight:500;">Selecciona un servicio:</label>
+                <label style="display:block; margin-bottom:10px; font-weight:500;">${t('Selecciona un servicio:')}</label>
                 <input type="hidden" id="selectServicio" value="">
                 <div style="max-height:280px; overflow-y:auto; border:1px solid #eee; border-radius:8px; padding:10px; background:#faf9f7;">
                     ${listaCategorias}
                 </div>
             </div>
             <div style="margin-bottom:12px;">
-                <label style="display:block; margin-bottom:5px; font-weight:500;">Hora</label>
+                <label style="display:block; margin-bottom:5px; font-weight:500;">${t('Hora')}</label>
                 <select id="selectHora" required style="width:100%; padding:8px; border-radius:6px; border:1px solid #ddd;">
                     ${opcionesHora}
                 </select>
             </div>
             <div style="margin-bottom:12px;">
-                <label style="display:block; margin-bottom:5px; font-weight:500;">Notas (opcional)</label>
-                <textarea id="notasCita" placeholder="Ej: tengo piel sensible..." style="width:100%; padding:8px; border-radius:6px; border:1px solid #ddd; resize:vertical; min-height:60px;"></textarea>
+                <label style="display:block; margin-bottom:5px; font-weight:500;">${t('Notas (opcional)')}</label>
+                <textarea id="notasCita" placeholder="${t('Ej: tengo piel sensible...')}" style="width:100%; padding:8px; border-radius:6px; border:1px solid #ddd; resize:vertical; min-height:60px;"></textarea>
             </div>
             <div id="errorCita" style="display:none; color:red; margin-bottom:10px; font-size:14px;"></div>
-            <button type="submit" class="btn btn-primary" style="width:100%;">Confirmar Cita</button>
+            <button type="submit" class="btn btn-primary" style="width:100%;">${t('Confirmar Cita')}</button>
         </form>
     `;
 
@@ -336,7 +341,7 @@ async function mostrarMisCitas(e) {
     const listaCitas = document.getElementById('listaCitas');
     modal.classList.add('active');
     document.body.style.overflow = 'hidden';
-    listaCitas.innerHTML = '<p style="text-align:center;">Cargando citas...</p>';
+    listaCitas.innerHTML = '<p style="text-align:center;">' + t('Cargando citas...') + '</p>';
 
     try {
         const response = await fetch(`${BACKEND_URL}/api/citas/mis-citas`, {
@@ -345,12 +350,12 @@ async function mostrarMisCitas(e) {
         const citas = await response.json();
 
         if (citas.length === 0) {
-            listaCitas.innerHTML = '<p style="text-align:center; color:#888;">No tienes citas agendadas aún.</p>';
+            listaCitas.innerHTML = '<p style="text-align:center; color:#888;">' + t('No tienes citas agendadas aún.') + '</p>';
             return;
         }
 
         listaCitas.innerHTML = citas.map(c => {
-            const fecha = new Date(c.fecha_cita).toLocaleString('es-ES', {
+            const fecha = new Date(c.fecha_cita).toLocaleString(getLocale(), {
                 weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
             });
             const colorEstado = {pendiente: '#f59e0b', confirmada: '#10b981', completada: '#6366f1', cancelada: '#ef4444'};
@@ -358,36 +363,36 @@ async function mostrarMisCitas(e) {
                 <div style="border:1px solid #eee; border-radius:8px; padding:15px; margin-bottom:12px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                         <strong>${c.servicio_nombre}</strong>
-                        <span style="background:${colorEstado[c.estado] || '#888'}; color:white; padding:3px 10px; border-radius:20px; font-size:12px;">${c.estado}</span>
+                        <span style="background:${colorEstado[c.estado] || '#888'}; color:white; padding:3px 10px; border-radius:20px; font-size:12px;">${t(c.estado)}</span>
                     </div>
                     <p style="margin:4px 0; font-size:14px; color:#555;">📅 ${fecha}</p>
-                    <p style="margin:4px 0; font-size:14px; color:#555;">⏱ ${c.duracion_minutos} min</p>
+                    <p style="margin:4px 0; font-size:14px; color:#555;">⏱ ${c.duracion_minutos} ${t('min')}</p>
                     ${c.notas ? `<p style="margin:4px 0; font-size:14px; color:#555;">📝 ${c.notas}</p>` : ''}
-                    ${c.estado === 'pendiente' ? `<button onclick="cancelarCita(${c.id_cita}, this)" style="margin-top:8px; padding:5px 12px; background:#ef4444; color:white; border:none; border-radius:6px; cursor:pointer; font-size:13px;">Cancelar cita</button>` : ''}
+                    ${c.estado === 'pendiente' ? `<button onclick="cancelarCita(${c.id_cita}, this)" style="margin-top:8px; padding:5px 12px; background:#ef4444; color:white; border:none; border-radius:6px; cursor:pointer; font-size:13px;">${t('Cancelar cita')}</button>` : ''}
                 </div>
             `;
         }).join('');
     } catch (error) {
-        listaCitas.innerHTML = '<p style="text-align:center; color:red;">Error al cargar las citas.</p>';
+        listaCitas.innerHTML = '<p style="text-align:center; color:red;">' + t('Error al cargar las citas.') + '</p>';
     }
 }
 
 async function cancelarCita(id, btn) {
     btn.disabled = true;
-    btn.textContent = 'Cancelando...';
+    btn.textContent = t('Cancelando...');
     try {
         const response = await fetch(`${BACKEND_URL}/api/citas/${id}/cancelar`, {
             method: 'PUT',
             headers: { 'Authorization': `Bearer ${getToken()}` }
         });
         if (response.ok) {
-            showNotification('Cita cancelada correctamente', 'info');
-            btn.closest('div[style]').querySelector('span[style*="background"]').textContent = 'cancelada';
+            showNotification(t('Cita cancelada correctamente'), 'info');
+            btn.closest('div[style]').querySelector('span[style*="background"]').textContent = t('cancelada');
             btn.remove();
         }
     } catch (error) {
         btn.disabled = false;
-        btn.textContent = 'Cancelar cita';
+        btn.textContent = t('Cancelar cita');
     }
 }
 
@@ -429,7 +434,7 @@ function initCalendar() {
         const headers = calendarGrid.querySelectorAll('.calendar-day-header');
         calendarGrid.innerHTML = '';
         headers.forEach(h => calendarGrid.appendChild(h));
-        currentMonthEl.textContent = `${months[currentMonth]} ${currentYear}`;
+        currentMonthEl.textContent = `${t(months[currentMonth])} ${currentYear}`;
         const firstDay = new Date(currentYear, currentMonth, 1).getDay();
         const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
         const today = new Date();
@@ -458,20 +463,26 @@ function initCalendar() {
         if (currentUser) {
             mostrarFormularioCita(date);
         } else {
-            const dateDisplay = document.getElementById('selectedDate');
-            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-            dateDisplay.innerHTML = `
-                <p>Fecha seleccionada:</p>
-                <div class="date-display">${date.toLocaleDateString('es-ES', options)}</div>
-                <p style="margin-top: 15px; font-size: 14px;">Por favor inicia sesión para agendar tu cita</p>
-                <button onclick="openLoginModal()" class="btn btn-primary" style="margin-top: 10px;">Iniciar Sesión</button>
-            `;
+            mostrarPromptLogin(date);
         }
     }
 
     prevBtn.addEventListener('click', () => { currentMonth--; if (currentMonth < 0) { currentMonth = 11; currentYear--; } renderCalendar(); });
     nextBtn.addEventListener('click', () => { currentMonth++; if (currentMonth > 11) { currentMonth = 0; currentYear++; } renderCalendar(); });
     renderCalendar();
+    refreshCalendar = renderCalendar;
+}
+
+function mostrarPromptLogin(date) {
+    bookingView = 'login';
+    const dateDisplay = document.getElementById('selectedDate');
+    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+    dateDisplay.innerHTML = `
+        <p>${t('Fecha seleccionada:')}</p>
+        <div class="date-display">${date.toLocaleDateString(getLocale(), options)}</div>
+        <p style="margin-top: 15px; font-size: 14px;">${t('Por favor inicia sesión para agendar tu cita')}</p>
+        <button onclick="openLoginModal()" class="btn btn-primary" style="margin-top: 10px;">${t('Iniciar Sesión')}</button>
+    `;
 }
 
 function initNavbar() {
@@ -496,14 +507,25 @@ async function cargarResenas() {
     if (!lista) return;
     try {
         const response = await fetch(`${BACKEND_URL}/api/resenas`);
-        const resenas = await response.json();
+        resenasCache = await response.json();
+        renderResenas();
+    } catch (error) {
+        lista.innerHTML = '<p style="text-align:center; color:#888; grid-column:1/-1;">' + t('No se pudieron cargar las reseñas.') + '</p>';
+    }
+}
+
+function renderResenas() {
+    const lista = document.getElementById('listaResenas');
+    const resenas = resenasCache;
+    if (!lista || !resenas) return;
+    {
         if (resenas.length === 0) {
-            lista.innerHTML = '<p style="text-align:center; color:#888; grid-column:1/-1;">Sé la primera en dejar una reseña ⭐</p>';
+            lista.innerHTML = '<p style="text-align:center; color:#888; grid-column:1/-1;">' + t('Sé la primera en dejar una reseña ⭐') + '</p>';
             return;
         }
         lista.innerHTML = resenas.map(r => {
             const estrellas = '★'.repeat(r.calificacion) + '☆'.repeat(5 - r.calificacion);
-            const fecha = new Date(r.fecha_creacion).toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' });
+            const fecha = new Date(r.fecha_creacion).toLocaleDateString(getLocale(), { year: 'numeric', month: 'long', day: 'numeric' });
             return `
                 <div style="background:white; border-radius:12px; padding:25px; box-shadow:0 2px 15px rgba(0,0,0,0.07);">
                     <div style="color:#f59e0b; font-size:20px; margin-bottom:10px;">${estrellas}</div>
@@ -520,8 +542,6 @@ async function cargarResenas() {
                 </div>
             `;
         }).join('');
-    } catch (error) {
-        lista.innerHTML = '<p style="text-align:center; color:#888; grid-column:1/-1;">No se pudieron cargar las reseñas.</p>';
     }
 }
 
@@ -569,7 +589,7 @@ async function enviarResena(e) {
     errorDiv.style.display = 'none';
 
     if (!calificacion || calificacion < 1) {
-        errorDiv.textContent = 'Por favor selecciona una calificación con estrellas';
+        errorDiv.textContent = t('Por favor selecciona una calificación con estrellas');
         errorDiv.style.display = 'block';
         return;
     }
@@ -583,13 +603,13 @@ async function enviarResena(e) {
         const data = await response.json();
         if (response.ok) {
             cerrarModalResena();
-            showNotification('¡Reseña enviada! Será publicada pronto. Gracias 🙏', 'success');
+            showNotification(t('¡Reseña enviada! Será publicada pronto. Gracias 🙏'), 'success');
         } else {
-            errorDiv.textContent = data.error || 'Error al enviar la reseña';
+            errorDiv.textContent = t(data.error || 'Error al enviar la reseña');
             errorDiv.style.display = 'block';
         }
     } catch (error) {
-        errorDiv.textContent = 'Error de conexión. Intenta de nuevo.';
+        errorDiv.textContent = t('Error de conexión. Intenta de nuevo.');
         errorDiv.style.display = 'block';
     }
 }
@@ -601,3 +621,13 @@ style.textContent = `
     @keyframes slideOut { from { transform: translateX(0); opacity: 1; } to { transform: translateX(100%); opacity: 0; } }
 `;
 document.head.appendChild(style);
+
+// ── CAMBIO DE IDIOMA ──────────────────────────────────────
+// i18n.js avisa con este evento cuando el visitante cambia de idioma
+document.addEventListener('bsc:languagechange', () => {
+    updateAuthUI();
+    if (refreshCalendar) refreshCalendar();
+    renderResenas();
+    if (selectedDate && bookingView === 'form') mostrarFormularioCita(selectedDate);
+    else if (selectedDate && bookingView === 'login') mostrarPromptLogin(selectedDate);
+});
